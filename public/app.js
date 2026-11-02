@@ -14,15 +14,16 @@ const modalOverlay    = document.getElementById('modalOverlay');
 const modalCancel     = document.getElementById('modalCancel');
 const modalConfirm    = document.getElementById('modalConfirm');
 
-// ── Constants ─────────────────────────────────────────────────
-const STORAGE_KEY = 'budget_tracker_transactions';
-
 // ── State ─────────────────────────────────────────────────────
 let transactions  = [];
 let activeFilter  = 'all';
-let currentSymbol = '$';
+let currentSymbol = localStorage.getItem('budget_currency') || '$';
 
-// ── Set default date to today ─────────────────────────────────
+// Set currency selector default
+currencySelect.value = currentSymbol;
+amountLabel.textContent = `Amount (${currentSymbol})`;
+
+// Set default date to today
 dateInput.value = new Date().toISOString().split('T')[0];
 
 // ── Currency Config ───────────────────────────────────────────
@@ -31,45 +32,23 @@ const currencyConfig = {
   '₹': { locale: 'en-IN', symbol: '₹' }
 };
 
-// ── localStorage helpers ──────────────────────────────────────
-function loadFromStorage() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : getDefaultData();
-  } catch {
-    return getDefaultData();
-  }
-}
-
-function saveToStorage(data) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-}
-
-function getDefaultData() {
-  return [
-    { id: 1, title: 'Salary',    amount: 3500, type: 'income',  category: 'Salary',  date: new Date().toISOString().split('T')[0] },
-    { id: 2, title: 'House Rent',amount: 1200, type: 'expense', category: 'Housing', date: new Date().toISOString().split('T')[0] },
-    { id: 3, title: 'Groceries', amount: 150,  type: 'expense', category: 'Food',    date: new Date().toISOString().split('T')[0] }
-  ];
-}
-
-// ── Format amount with selected currency ──────────────────────
 function formatAmount(amount) {
-  const cfg = currencyConfig[currentSymbol];
+  const cfg = currencyConfig[currentSymbol] || currencyConfig['$'];
   return currentSymbol + Number(amount).toLocaleString(cfg.locale, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   });
 }
 
-// ── Currency change handler ───────────────────────────────────
+// Currency switch event
 currencySelect.addEventListener('change', () => {
   currentSymbol = currencySelect.value;
+  localStorage.setItem('budget_currency', currentSymbol);
   amountLabel.textContent = `Amount (${currentSymbol})`;
   render();
 });
 
-// ── Category Icons ────────────────────────────────────────────
+// Category Icons
 const categoryIcons = {
   Salary:        '💰',
   Freelance:     '💻',
@@ -82,18 +61,26 @@ const categoryIcons = {
   Other:         '📦'
 };
 
-// ── 1. Load transactions from localStorage ────────────────────
-function fetchTransactions() {
-  transactions = loadFromStorage();
-  render();
+// ── 1. Fetch transactions from Spring Boot REST API ───────────
+async function fetchTransactions() {
+  try {
+    const res = await fetch('/api/transactions');
+    if (!res.ok) throw new Error('API response was not ok');
+    transactions = await res.json();
+    render();
+  } catch (err) {
+    console.warn('Backend API unavailable, using local cache:', err);
+    const cached = localStorage.getItem('budget_transactions_cache');
+    transactions = cached ? JSON.parse(cached) : [];
+    render();
+  }
 }
 
-// ── 2. Add a new transaction ──────────────────────────────────
-transactionForm.addEventListener('submit', (e) => {
+// ── 2. Add Transaction ────────────────────────────────────────
+transactionForm.addEventListener('submit', async (e) => {
   e.preventDefault();
 
-  const newTransaction = {
-    id:       Date.now(),
+  const payload = {
     title:    document.getElementById('title').value.trim(),
     amount:   parseFloat(document.getElementById('amount').value),
     type:     document.getElementById('type').value,
@@ -101,22 +88,53 @@ transactionForm.addEventListener('submit', (e) => {
     date:     document.getElementById('date').value
   };
 
-  transactions.unshift(newTransaction);
-  saveToStorage(transactions);
+  try {
+    const res = await fetch('/api/transactions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
 
-  transactionForm.reset();
-  dateInput.value = new Date().toISOString().split('T')[0];
-  render();
+    if (res.ok) {
+      const created = await res.json();
+      transactions.unshift(created);
+      localStorage.setItem('budget_transactions_cache', JSON.stringify(transactions));
+      transactionForm.reset();
+      dateInput.value = new Date().toISOString().split('T')[0];
+      render();
+    } else {
+      const errText = await res.text();
+      alert('Error saving transaction: ' + errText);
+    }
+  } catch (err) {
+    console.error('Error connecting to Spring Boot backend:', err);
+    // Offline fallback
+    const offlineItem = { id: Date.now(), ...payload };
+    transactions.unshift(offlineItem);
+    localStorage.setItem('budget_transactions_cache', JSON.stringify(transactions));
+    transactionForm.reset();
+    dateInput.value = new Date().toISOString().split('T')[0];
+    render();
+  }
 });
 
-// ── 3. Delete a single transaction ───────────────────────────
-function deleteTransaction(id) {
-  transactions = transactions.filter(t => t.id !== id);
-  saveToStorage(transactions);
-  render();
+// ── 3. Delete Transaction ─────────────────────────────────────
+async function deleteTransaction(id) {
+  try {
+    const res = await fetch(`/api/transactions/${id}`, { method: 'DELETE' });
+    if (res.ok) {
+      transactions = transactions.filter(t => t.id !== id);
+      localStorage.setItem('budget_transactions_cache', JSON.stringify(transactions));
+      render();
+    }
+  } catch (err) {
+    transactions = transactions.filter(t => t.id !== id);
+    localStorage.setItem('budget_transactions_cache', JSON.stringify(transactions));
+    render();
+  }
 }
 
-// ── 4. Reset All modal logic ──────────────────────────────────
+// ── 4. Reset All Modal ────────────────────────────────────────
 resetBtn.addEventListener('click', () => {
   modalOverlay.style.display = 'flex';
 });
@@ -129,14 +147,19 @@ modalOverlay.addEventListener('click', (e) => {
   if (e.target === modalOverlay) modalOverlay.style.display = 'none';
 });
 
-modalConfirm.addEventListener('click', () => {
+modalConfirm.addEventListener('click', async () => {
+  try {
+    await fetch('/api/transactions', { method: 'DELETE' });
+  } catch (err) {
+    console.warn('API reset failed, resetting locally:', err);
+  }
   transactions = [];
-  saveToStorage(transactions);
+  localStorage.setItem('budget_transactions_cache', JSON.stringify([]));
   modalOverlay.style.display = 'none';
   render();
 });
 
-// ── 5. Update Summary Cards ───────────────────────────────────
+// ── 5. Update Overview Cards ──────────────────────────────────
 function updateStats() {
   let income = 0, expense = 0;
   transactions.forEach(t => {
@@ -188,7 +211,7 @@ function renderList() {
   });
 }
 
-// ── Filter tab toggle ─────────────────────────────────────────
+// Filter tabs
 filterBtns.forEach(btn => {
   btn.addEventListener('click', () => {
     filterBtns.forEach(b => b.classList.remove('active'));
@@ -198,18 +221,16 @@ filterBtns.forEach(btn => {
   });
 });
 
-// ── Escape HTML helper ────────────────────────────────────────
 function escapeHtml(str) {
   const d = document.createElement('div');
   d.textContent = str;
   return d.innerHTML;
 }
 
-// ── Master render ─────────────────────────────────────────────
 function render() {
   updateStats();
   renderList();
 }
 
-// ── Boot ──────────────────────────────────────────────────────
+// Initial load
 fetchTransactions();

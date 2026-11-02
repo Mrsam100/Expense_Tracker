@@ -1,57 +1,73 @@
-# 💼 Personal Budget Tracker (Full-Stack)
+# 💼 Personal Budget Tracker (Spring Boot Full-Stack)
 
-A clean, beginner-friendly full-stack application built with **Node.js + Express** and a modern, responsive frontend.
-
----
-
-## 🚀 Features
-
-- **Dashboard Cards:** Real-time calculation of Total Balance, Total Income, and Total Expenses.
-- **Add Transactions:** Log income or expenses with a title, amount, category, and date.
-- **Filter Tabs:** Quickly toggle views between **All**, **Income**, and **Expense**.
-- **Data Persistence:** Automatically stores transactions in a local `transactions.json` file.
-- **RESTful API:** Clean `GET`, `POST`, and `DELETE` endpoints.
+A modern full-stack web application built with **Spring Boot 3, Spring Data JPA, H2 Database**, and a responsive frontend with currency selection (USD / INR).
 
 ---
 
-## 📁 Project Structure
+## 🏗️ Project Architecture
 
 ```text
 final_proj_k/
 │
-├── server.js              # Express backend server & REST API
-├── transactions.json      # Local JSON database (auto-created)
-├── package.json           # Dependencies and scripts
+├── pom.xml                                              # Maven project dependencies & build config
+├── src/
+│   └── main/
+│       ├── java/com/budget/tracker/
+│       │   ├── BudgetTrackerApplication.java            # Main Spring Boot Application & DB Seeder
+│       │   ├── model/
+│       │   │   └── Transaction.java                     # JPA Entity mapping to database table
+│       │   ├── repository/
+│       │   │   └── TransactionRepository.java           # Spring Data JPA CRUD repository
+│       │   └── controller/
+│       │       └── TransactionController.java           # REST Controller (@GetMapping, @PostMapping, etc.)
+│       │
+│       └── resources/
+│           ├── application.properties                   # H2 database, port, and JPA settings
+│           └── static/                                  # Frontend served automatically by Spring Boot
+│               ├── index.html                           # Modern dashboard UI
+│               ├── style.css                            # Clean typography & responsive styling
+│               └── app.js                               # REST API integration & currency logic
 │
-└── public/                # Frontend files served statically
-    ├── index.html         # HTML UI layout and dashboard
-    ├── style.css          # Modern, sleek responsive design
-    └── app.js             # Client-side API fetch and UI logic
+└── README.md
 ```
 
 ---
 
-## ⚡ Quick Start
+## ⚡ Prerequisites
 
-1. **Install dependencies** (already done):
-   ```bash
-   npm install
-   ```
-
-2. **Run the server**:
-   ```bash
-   npm start
-   ```
-
-3. **Open in your browser**:
-   Navigate to [http://localhost:3000](http://localhost:3000)
+To run Spring Boot on your computer, you need:
+* **Java Development Kit (JDK 17 or 21)**
+  * Download free from [Eclipse Temurin OpenJDK](https://adoptium.net/temurin/releases/) or Oracle JDK.
+  * Verify by running in terminal:
+    ```bash
+    java -version
+    ```
 
 ---
 
-## 🔌 API Reference
+## 🚀 How to Run in VS Code
+
+1. **Open the project folder** in VS Code.
+2. If you have the **Extension Pack for Java** in VS Code:
+   * Simply open `BudgetTrackerApplication.java` and click **Run**.
+3. **Or run via terminal**:
+   ```bash
+   mvn spring-boot:run
+   ```
+4. **Open your browser**:
+   * Dashboard: [http://localhost:8080](http://localhost:8080)
+   * H2 Database Console: [http://localhost:8080/h2-console](http://localhost:8080/h2-console)
+     * JDBC URL: `jdbc:h2:mem:budgetdb`
+     * Username: `sa`
+     * Password: *(leave blank)*
+
+---
+
+## 🔌 Spring Boot REST API Endpoints
 
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
-| `GET` | `/api/transactions` | Fetch list of all transactions |
+| `GET` | `/api/transactions` | Fetch all transactions (newest first) |
 | `POST` | `/api/transactions` | Create a new transaction |
-| `DELETE` | `/api/transactions/:id` | Remove a transaction by ID |
+| `DELETE` | `/api/transactions/{id}` | Delete a single transaction by ID |
+| `DELETE` | `/api/transactions` | Reset / delete all transactions |
